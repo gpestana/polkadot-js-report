@@ -26,11 +26,23 @@ async function main() {
         }] ******************`
     );
 
+    await getRecentBlocks(api);
     // await which_pallets(api);
     // await read_const(api);
-	await subscribe_finalized_blocks(api);
+	// await subscribe_finalized_blocks(api);
 
 
+}
+
+async function getRecentBlocks(api: ApiPromise) {
+    const lastBlockNumber = await api.derive.chain.bestNumber();
+
+    for (let i = lastBlockNumber.toNumber(); i > lastBlockNumber.toNumber() - 200; i--) {
+        const blockHash = await api.rpc.chain.getBlockHash(i);
+        const blockHeader = await api.derive.chain.getHeader(blockHash);
+
+        console.log(`Block ${blockHeader.number}: ${blockHash}`);
+    }
 }
 
 async function subscribe_finalized_blocks(api: ApiPromise) {
