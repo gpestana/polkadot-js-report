@@ -26,22 +26,24 @@ async function main() {
         }] ******************`
     );
 
-    await getRecentBlocks(api);
+    await getRecentBlocks(api, 10);
     // await which_pallets(api);
     // await read_const(api);
 	// await subscribe_finalized_blocks(api);
 
-
+    process.exit(0);
 }
 
-async function getRecentBlocks(api: ApiPromise) {
+async function getRecentBlocks(api: ApiPromise, count: number) {
     const lastBlockNumber = await api.derive.chain.bestNumber();
 
-    for (let i = lastBlockNumber.toNumber(); i > lastBlockNumber.toNumber() - 200; i--) {
+    for (let i = lastBlockNumber.toNumber(); i > lastBlockNumber.toNumber() - count; i--) {
         const blockHash = await api.rpc.chain.getBlockHash(i);
-        const blockHeader = await api.derive.chain.getHeader(blockHash);
+        const apiAt = await api.at(blockHash);
+        const blockWeight = await apiAt.query.system.blockWeight();
 
-        console.log(`Block ${blockHeader.number}: ${blockHash}`);
+        console.log(`Block ${lastBlockNumber.toNumber() - i}: ${blockHash}`);
+        console.log(`Block weight ${blockWeight.normal}`);
     }
 }
 
