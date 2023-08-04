@@ -37,7 +37,9 @@ async function main() {
 	// await which_pallets(api);
 	// await read_const(api);
 	// await subscribe_finalized_blocks(api);
-    await pending_rewards(apiAt, 1);
+    let pendingRewards = await pending_rewards(apiAt, 1);
+    console.log(`Pending Rewards: ${pendingRewards}`);
+
 	process.exit(0);
 }
 
@@ -69,20 +71,17 @@ async function which_pallets(api: ApiPromise) {
 	}
 }
 
-async function read_const(api: ApiPromise) {
-	const ED: Balance = api.consts.balances.existentialDeposit;
-	console.log(`Existential deposit: ${ED.toHuman()}`);
+function existential_deposit(apiAt: ApiDecoration<"promise">) {
+	return apiAt.consts.balances.existentialDeposit;
 }
 
 async function current_reward_counter(apiAt: ApiDecoration<"promise">, poolID: number) {
-    const rewardAddr = "F3opxRbN5ZavB4LTn2XJkJjzssVSUggzq75YZueYesPwk5J";
-    const rewardAcct = apiAt.registry.createType("AccountId", rewardAddr)
-
-    let balance = (await apiAt.query.system.account(rewardAcct)).data.free;
+    let balance = await rewardBalance(apiAt);
     let rewardPool = (await apiAt.query.nominationPools.rewardPools(poolID)).unwrap();
     let bondedPool = (await apiAt.query.nominationPools.bondedPools(poolID)).unwrap();
-    let min_balance = apiAt.consts.balances.existentialDeposit;
+    let min_balance = existential_deposit(apiAt);
     let payout_balance = balance.sub(min_balance).add(rewardPool.totalRewardsClaimed).sub(rewardPool.lastRecordedTotalPayouts);
+    console.log(`Free balance: ${balance}, Current Balance: ${balance.sub(min_balance)}`);
     return (payout_balance.div(bondedPool.points)).add(rewardPool.lastRecordedRewardCounter);
 }
 
@@ -94,8 +93,19 @@ async function pending_rewards(apiAt: ApiDecoration<"promise">, poolID: number) 
     members.forEach(([account, member]) => {
         let delegator = member.unwrap();
         let memberPendingReward = (crc.sub(delegator.lastRecordedRewardCounter)).mul(delegator.points);
+//         console.log(`Processing account ${account.toHuman()}`);
+//         console.log(`reward counter: {$delegator.lastRecordedRewardCounter} | points: ${delegator.points} | PendingReward: => ${memberPendingReward}`);
         pendingRewards.iadd(memberPendingReward);
+//         console.log(`Total Pending Reward: ${pendingRewards}`)
     });
+
+    return pendingRewards;
+}
+
+async function rewardBalance(apiAt: ApiDecoration<"promise">) {
+    const rewardAddr = "F3opxRbN5ZavB4LTn2XJkJjzssVSUggzq75YZueYesPwk5J";
+    const rewardAcct = apiAt.registry.createType("AccountId", rewardAddr)
+    return (await apiAt.query.system.account(rewardAcct)).data.free;
 }
 
 main().catch(console.error);
