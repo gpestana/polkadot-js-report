@@ -39,17 +39,27 @@ async function main() {
 }
 
 async function duplicate_controllers(apiAt: ApiDecoration<'promise'>) {
+	const validators = await get_all_validators(apiAt);
 	const reverse_bonded = new Map(); // controller -> stash
 	const duplicate_controllers = new Set<string>();
 
 	(await apiAt.query.staking.bonded.entries()).map(([stash, controller]) => {
 		if (reverse_bonded.has(controller.toHuman())) {
+			const stash_two = reverse_bonded.get(controller.toHuman());
 			console.log(
 				'\x1b[36m%s\x1b[0m',
-				`🙈 🙉 🙊 Duplicate controller found: ${controller.toHuman()} for stashes ${stash.toHuman()} and ${reverse_bonded.get(
-					controller.toHuman()
-				)}`
+				`🙈 🙉 🙊 Duplicate controller found: ${controller.toHuman()} | stash 1: ${stash.toHuman()} | stash 2: ${stash_two}`
 			);
+
+			console.log(
+				'\x1b[31m%s\x1b[0m',
+				`⚙️  ⚙️  ⚙️  is_validator controller: ${validators.includes(
+					controller.toHuman()?.toString()
+				)} | stash1 ${validators.includes(
+					stash.toHuman()?.toString()
+				)} | stash 2: ${validators.includes(stash_two.toString())}`
+			);
+
 			duplicate_controllers.add(controller.toString());
 		} else {
 			reverse_bonded.set(controller.toHuman(), stash.toHuman());
@@ -57,6 +67,10 @@ async function duplicate_controllers(apiAt: ApiDecoration<'promise'>) {
 	});
 
 	return duplicate_controllers;
+}
+
+async function get_all_validators(apiAt: ApiDecoration<'promise'>) {
+	return (await apiAt.query.staking.validators.keys()).map((key) => key.toHuman()?.toString());
 }
 
 /// checks when controller and stash became same.
