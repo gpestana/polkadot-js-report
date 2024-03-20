@@ -23,11 +23,21 @@ async function main() {
 	const latest_hash = await api.rpc.chain.getBlockHash(latest);
 	const apiAt = await api.at(latest_hash);
 
+  const chain = (await api.rpc.system.chain()).toHuman();
+
 	console.log(
-		`****************** Connected to node: ${(await api.rpc.system.chain()).toHuman()} [ss58: ${
+		`****************** Connected to node: ${chain} [ss58: ${
 			api.registry.chainSS58
-		}] ******************`
+		}] ******************\n\n\n`
 	);
+
+  console.log(`➡️  Starting corrupted report for ${chain}, at block ${latest_hash} (${new Date()})\n`);
+
+  // check count of Ledgers and metadata.
+  let ledger_keys = await api.query.staking.ledger.keys();
+  let bonded_keys = await api.query.staking.bonded.keys();
+  let payee_keys = await api.query.staking.payee.keys();
+  console.log(`⚙️  #ledgers: ${ledger_keys.length}, #bonded: ${bonded_keys.length}, #payee: ${payee_keys.length}`);
 
 	const controllers = await corrupt_ledgers(apiAt);
 	// iterate on set
@@ -41,9 +51,10 @@ async function main() {
 async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>) {
 	const validators = await get_all_validators(apiAt);
 	const reverse_bonded = new Map(); // controller -> stash
+  const none_ledgers: string[] = []; // controller
 	const duplicate_controllers = new Set<string>();
 
-	(await apiAt.query.staking.bonded.entries()).map(([stash, controller]) => {
+	(await apiAt.query.staking.bonded.entries()).map(async ([stash, controller]) => {
 		if (reverse_bonded.has(controller.toHuman())) {
 			const stash_two = reverse_bonded.get(controller.toHuman());
 			console.log(
@@ -64,7 +75,17 @@ async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>) {
 		} else {
 			reverse_bonded.set(controller.toHuman(), stash.toHuman());
 		}
-	});
+
+    // check for None ledgers.
+    let ledger = await apiAt.query.staking.ledger(controller);
+    if (ledger.isEmpty) {
+      none_ledgers.push(controller.toString());
+    }
+  });
+
+  none_ledgers.forEach((controller) => {
+    console.log(`⚫ controller ${controller} does not have an associated ledger`); 
+  });
 
 	return duplicate_controllers;
 }
