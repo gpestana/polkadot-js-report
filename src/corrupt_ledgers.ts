@@ -10,7 +10,9 @@ import { hideBin } from 'yargs/helpers';
 const optionsPromise = yargs(hideBin(process.argv)).option('endpoint', {
 	alias: 'e',
 	type: 'string',
-	default: 'wss://polkadot-rpc.dwellir.com',
+	//default: 'wss://polkadot-rpc.dwellir.com',
+	//default: 'wss://polkadot-try-runtime-node.parity-chains.parity.io',
+  default: 'wss://rpc.ibp.network/polkadot',
 	description: 'the wss endpoint. It must allow unsafe RPCs.',
 	required: true
 }).argv;
@@ -31,19 +33,34 @@ async function main() {
 		}] ******************\n\n\n`
 	);
 
-  console.log(`➡️  Starting corrupted report for ${chain}, at block ${latest_hash} (${new Date()})\n`);
+  console.log(`> Starting report of corrupted ledgers\n - ${chain}\n - block ${latest_hash}\n - at ${new Date()}\n`);
 
   // check count of Ledgers and metadata.
-  let ledger_keys = await api.query.staking.ledger.keys();
-  let bonded_keys = await api.query.staking.bonded.keys();
-  let payee_keys = await api.query.staking.payee.keys();
-  console.log(`⚙️  #ledgers: ${ledger_keys.length}, #bonded: ${bonded_keys.length}, #payee: ${payee_keys.length}`);
+  let summary = false;
+  if (summary) {
+    let ledger_keys = await api.query.staking.ledger.keys();
+    let bonded_keys = await api.query.staking.bonded.keys();
+    let payee_keys = await api.query.staking.payee.keys();
+    console.log(`🔬 #ledgers: ${ledger_keys.length}, #bonded: ${bonded_keys.length}, #payee: ${payee_keys.length}\n`);
+  }
 
-	const controllers = await corrupt_ledgers(apiAt);
-	// iterate on set
-	for (const controller of controllers) {
-		await when_controller_deprecated(api, controller);
-	}
+  // check corrupt ledgers.
+  let corrupt = true;
+  if (corrupt) {
+	  const [corrupt_controllers, none_ledgers] = await corrupt_ledgers(apiAt);
+	  // iterate on set
+	  for (const controller of corrupt_controllers) {
+		  await when_controller_deprecated(api, controller);
+	  }
+
+    console.log(`⚫ None ledgers, i.e. 'Ledger(bonded_controller) = None'`);
+    let n = 0;
+    none_ledgers.forEach(c => {
+      console.log(` ${c}`);
+      n += 1;
+    });
+    console.log(`# of none ledgers: ${n}`);
+  }
 
 	process.exit(0);
 }
@@ -51,10 +68,12 @@ async function main() {
 async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>) {
 	const validators = await get_all_validators(apiAt);
 	const reverse_bonded = new Map(); // controller -> stash
-  const none_ledgers: string[] = []; // controller
 	const duplicate_controllers = new Set<string>();
+  const none_ledgers: string[] = [];
 
-	(await apiAt.query.staking.bonded.entries()).map(async ([stash, controller]) => {
+  let bonded_entries = await apiAt.query.staking.bonded.entries();
+
+	bonded_entries.map(([stash, controller]) => {
 		if (reverse_bonded.has(controller.toHuman())) {
 			const stash_two = reverse_bonded.get(controller.toHuman());
 			console.log(
@@ -75,19 +94,19 @@ async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>) {
 		} else {
 			reverse_bonded.set(controller.toHuman(), stash.toHuman());
 		}
-
-    // check for None ledgers.
-    let ledger = await apiAt.query.staking.ledger(controller);
-    if (ledger.isEmpty) {
-      none_ledgers.push(controller.toString());
-    }
   });
 
-  none_ledgers.forEach((controller) => {
-    console.log(`⚫ controller ${controller} does not have an associated ledger`); 
-  });
+  let bonded_controllers = (await apiAt.query.staking.bonded.entries()).map(([_s, c]) => c.toHuman());
+  let ledgers_controllers = (await apiAt.query.staking.ledger.entries()).map(([c, _l]) => c.toHuman()?.toString());
 
-	return duplicate_controllers;
+    bonded_controllers.forEach(c => {
+      let acc = c?.toString();
+      if (acc !== undefined && !ledgers_controllers.includes(acc)) {
+        none_ledgers.push(acc)
+      }
+    });
+
+	return [duplicate_controllers, none_ledgers];
 }
 
 async function get_all_validators(apiAt: ApiDecoration<'promise'>) {
