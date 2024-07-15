@@ -1,9 +1,13 @@
-# polkadot-js-api-ts-template
+# `polkadot-js` Reports
 
-Run with
+### 1. Corrupt ledgers in Polkadot/Kusama
+
+Related to https://hackmd.io/DLb5jEYWSmmvqXC9ae4yRg?both#
+
+**To run the report**:
 
 ```bash
-yarn run main -e "wss://polkadot-rpc.dwellir.com"
+$ npm run test:corrupt_ledgers
 ```
 
-See [`package.json`](./package.json) to see what's up 🔥🔥.
+Note: change the Polkadot/Kusama RPC address in `./src/corrupt_ledgers.ts`.

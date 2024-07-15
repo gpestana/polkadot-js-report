@@ -7,16 +7,15 @@ import { ApiPromise, WsProvider } from '@polkadot/api';
 import { ApiDecoration } from '@polkadot/api/types';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-//import { U8aFixed } from `@polkadot/types`;
 
 const STAKING_ID = 'staking ';
 
 const optionsPromise = yargs(hideBin(process.argv)).option('endpoint', {
 	alias: 'e',
 	type: 'string',
-	//default: 'wss://polkadot-rpc.dwellir.com',
+	default: 'wss://polkadot-rpc.dwellir.com',
 	//default: 'wss://kusama-rpc.dwellir.com',
-	default: 'ws://127.0.0.1:8000',
+	//default: 'ws://127.0.0.1:8000',
 	description: 'the wss endpoint. It must allow unsafe RPCs.',
 	required: true
 }).argv;
