@@ -1,6 +1,7 @@
 # polkadot-js-api-ts-template
 
-Run with 
+Run with
+
 ```bash
 yarn run main -e "wss://polkadot-rpc.dwellir.com"
 ```

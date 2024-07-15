@@ -6,7 +6,9 @@
 	"scripts": {
 		"main": "./node_modules/.bin/ts-node ./src/index.ts",
 		"test:corrupt_ledgers": "./node_modules/.bin/ts-node src/corrupt_ledgers.ts",
+		"test:none_ledgers": "./node_modules/.bin/ts-node src/none_ledgers.ts",
 		"test:double_bonded": "./node_modules/.bin/ts-node src/double_bonded.ts",
+		"test:ledger_recover": "./node_modules/.bin/ts-node src/ledger_recover.ts",
 		"main:dev": "./node_modules/.bin/nodemon --exec ./node_modules/.bin/ts-node ./src/index.ts",
 		"build": "npm run clean && ./node_modules/.bin/tsc --pretty --declaration",
 		"build:dev": "./node_modules/.bin/tsc --pretty --declaration --watch",
@@ -28,13 +30,13 @@
 		"eslint": "^8.33.0",
 		"eslint-config-prettier": "^8.6.0",
 		"eslint-plugin-prettier": "^4.2.1",
+		"nodemon": "^2.0.20",
 		"npm-check-updates": "16.6.3",
-		"prettier": "^2.8.3",
+		"prettier": "^2.8.8",
+		"rimraf": "^4.1.2",
 		"ts-loader": "^9.4.2",
 		"ts-node": "^10.9.1",
-		"typescript": "4.9.5",
-		"nodemon": "^2.0.20",
-		"rimraf": "^4.1.2"
+		"typescript": "4.9.5"
 	},
 	"dependencies": {
 		"@polkadot/api": "9.13.5",

@@ -1,18 +1,22 @@
 // needed as of 7.x series, see CHANGELOG of the api repo.
 import '@polkadot/api-augment';
 import '@polkadot/types-augment';
+import '@polkadot/types';
 
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { ApiDecoration } from '@polkadot/api/types';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+//import { U8aFixed } from `@polkadot/types`;
+
+const STAKING_ID = 'staking ';
 
 const optionsPromise = yargs(hideBin(process.argv)).option('endpoint', {
 	alias: 'e',
 	type: 'string',
 	//default: 'wss://polkadot-rpc.dwellir.com',
-	//default: 'wss://polkadot-try-runtime-node.parity-chains.parity.io',
-  default: 'wss://rpc.ibp.network/polkadot',
+	//default: 'wss://kusama-rpc.dwellir.com',
+	default: 'ws://127.0.0.1:8000',
 	description: 'the wss endpoint. It must allow unsafe RPCs.',
 	required: true
 }).argv;
@@ -25,59 +29,74 @@ async function main() {
 	const latest_hash = await api.rpc.chain.getBlockHash(latest);
 	const apiAt = await api.at(latest_hash);
 
-  const chain = (await api.rpc.system.chain()).toHuman();
+	const chain = (await api.rpc.system.chain()).toHuman();
 
 	console.log(
-		`****************** Connected to node: ${chain} [ss58: ${
-			api.registry.chainSS58
-		}] ******************\n\n\n`
+		`****************** Connected to node: ${chain} [ss58: ${api.registry.chainSS58}] ******************\n\n\n`
 	);
 
-  console.log(`> Starting report of corrupted ledgers\n - ${chain}\n - block ${latest_hash}\n - at ${new Date()}\n`);
+	console.log(
+		`> Starting report of corrupted ledgers\n - ${chain}\n - block ${latest_hash}\n - at ${new Date()}\n`
+	);
 
-  // check count of Ledgers and metadata.
-  let summary = false;
-  if (summary) {
-    let ledger_keys = await api.query.staking.ledger.keys();
-    let bonded_keys = await api.query.staking.bonded.keys();
-    let payee_keys = await api.query.staking.payee.keys();
-    console.log(`🔬 #ledgers: ${ledger_keys.length}, #bonded: ${bonded_keys.length}, #payee: ${payee_keys.length}\n`);
-  }
+	// check count of Ledgers and metadata.
+	const summary = true;
+	if (summary) {
+		const ledger_keys = await api.query.staking.ledger.keys();
+		const bonded_keys = await api.query.staking.bonded.keys();
+		const payee_keys = await api.query.staking.payee.keys();
+		console.log(
+			`🔬 #ledgers: ${ledger_keys.length}, #bonded: ${bonded_keys.length}, #payee: ${payee_keys.length}\n`
+		);
+	}
 
-  // check corrupt ledgers.
-  let corrupt = true;
-  if (corrupt) {
-	  const [corrupt_controllers, none_ledgers] = await corrupt_ledgers(apiAt);
-	  // iterate on set
-	  for (const controller of corrupt_controllers) {
-		  await when_controller_deprecated(api, controller);
-	  }
+	// check corrupt ledgers.
+	const corrupt = true;
+	const check_locks = true;
 
-    console.log(`⚫ None ledgers, i.e. 'Ledger(bonded_controller) = None'`);
-    let n = 0;
-    none_ledgers.forEach(c => {
-      console.log(` ${c}`);
-      n += 1;
-    });
-    console.log(`# of none ledgers: ${n}`);
-  }
+	if (corrupt) {
+		const when_deprecated = [];
+		const when_none = [];
+
+		const [corrupt_controllers, none_ledgers] = await corrupt_ledgers(apiAt, check_locks);
+		// iterate on set of corrupted ledgers
+
+		const do_deprecated = false;
+		if (do_deprecated) {
+			for (const controller of corrupt_controllers) {
+				const when = await when_controller_deprecated(api, controller);
+				when_deprecated.push([controller, when]);
+			}
+		}
+
+		console.log(`\n⚫ None ledgers, i.e. 'Ledger(bonded_controller) = None'`);
+		let n = 0;
+		none_ledgers.forEach((c) => {
+			console.log(` ${c}`);
+			n += 1;
+		});
+		console.log(`# of none ledgers: ${n}`);
+	}
 
 	process.exit(0);
 }
 
-async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>) {
+type BondedTriplet = [string, string, string];
+
+async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>, check_locks: boolean) {
 	const validators = await get_all_validators(apiAt);
 	const reverse_bonded = new Map(); // controller -> stash
 	const duplicate_controllers = new Set<string>();
-  const none_ledgers: string[] = [];
+	const corrupted: BondedTriplet[] = [];
+	const none_ledgers: string[] = [];
 
-  let bonded_entries = await apiAt.query.staking.bonded.entries();
+	const bonded_entries = await apiAt.query.staking.bonded.entries();
 
-	bonded_entries.map(([stash, controller]) => {
+	bonded_entries.map(async ([stash, controller]) => {
 		if (reverse_bonded.has(controller.toHuman())) {
 			const stash_two = reverse_bonded.get(controller.toHuman());
 			console.log(
-				'\x1b[36m%s\x1b[0m',
+				'\n\x1b[36m%s\x1b[0m',
 				`🙈 🙉 🙊 Duplicate controller found: ${controller.toHuman()} | stash 1: ${stash.toHuman()} | stash 2: ${stash_two}`
 			);
 
@@ -90,27 +109,120 @@ async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>) {
 				)} | stash 2: ${validators.includes(stash_two.toString())}`
 			);
 
+			// add corrupted triplet to check the ledger's status later on.
+			const controller_s = controller.toString();
+			const stash_one_s = stash.toString();
+			const stash_two_s = stash_two.toString();
+
+			if (controller_s != undefined && stash_one_s != undefined && stash_two_s != undefined) {
+				corrupted.push([controller_s, stash_one_s, stash_two_s]);
+			}
+
+			await stash_status(apiAt, controller_s, stash_one_s);
+			await stash_status(apiAt, controller_s, stash_two_s);
+
+			if (check_locks == true) {
+				// check the status of the locks in the ledger associated with the controller/stash pair.
+				await check_async_locks(apiAt, controller_s, stash_one_s);
+			}
+
 			duplicate_controllers.add(controller.toString());
 		} else {
 			reverse_bonded.set(controller.toHuman(), stash.toHuman());
 		}
-  });
+	});
 
-  let bonded_controllers = (await apiAt.query.staking.bonded.entries()).map(([_s, c]) => c.toHuman());
-  let ledgers_controllers = (await apiAt.query.staking.ledger.entries()).map(([c, _l]) => c.toHuman()?.toString());
+	const bonded_controllers = (await apiAt.query.staking.bonded.entries()).map(([s, c]) => [
+		s.toHuman()?.toString(),
+		c.toHuman()?.toString()
+	]);
+	const ledgers_controllers = (await apiAt.query.staking.ledger.entries()).map(([c, _l]) =>
+		c.toHuman()?.toString()
+	);
 
-    bonded_controllers.forEach(c => {
-      let acc = c?.toString();
-      if (acc !== undefined && !ledgers_controllers.includes(acc)) {
-        none_ledgers.push(acc)
-      }
-    });
+	bonded_controllers.forEach(async ([s, c]) => {
+		const controller = c?.toString();
+		const stash = s?.toString();
+
+		if (controller !== undefined && !ledgers_controllers.includes(controller)) {
+			none_ledgers.push(controller);
+			if (stash != undefined) {
+				// check stash status.
+				await stash_status(apiAt, controller, stash);
+			} else {
+				console.log('❌❌❌❌ should never happen -- check code.');
+			}
+		}
+	});
 
 	return [duplicate_controllers, none_ledgers];
 }
 
 async function get_all_validators(apiAt: ApiDecoration<'promise'>) {
 	return (await apiAt.query.staking.validators.keys()).map((key) => key.toHuman()?.toString());
+}
+
+/// prints the corrupted ledger status to recover by stash.
+async function stash_status(apiAt: ApiDecoration<'promise'>, c: string, s: string) {
+	const controller = apiAt.registry.createType('AccountId', c);
+	const stash = apiAt.registry.createType('AccountId', s);
+
+	const lock_amount = await staking_lock(apiAt, s);
+	const ledger = await apiAt.query.staking.ledger(controller);
+
+	if (ledger.isNone) {
+		console.log(
+			`🎯 🎯 🎯 status for recovery for [controller: ${controller}, stash: ${stash}]: ledger: None, lock: ${lock_amount}`
+		);
+		return [0, 0];
+	} else {
+		const l = ledger.unwrap();
+		console.log(
+			`\n🎯 🎯 🎯 status for recovery for [controller: ${controller}, stash: ${stash}]: ledger.stash: ${l.stash}, ledger.total: ${l.total}, lock: ${lock_amount}`
+		);
+		return [l.total, lock_amount];
+	}
+}
+
+// prints if staking stash locks are not in sync with ledger total.
+async function check_async_locks(apiAt: ApiDecoration<'promise'>, c: string, s: string) {
+	const controller = apiAt.registry.createType('AccountId', c);
+	const stash = apiAt.registry.createType('AccountId', s);
+
+	const lock_amount = await staking_lock(apiAt, s);
+	const ledger = await apiAt.query.staking.ledger(controller);
+
+	if (ledger.isNone) {
+		// do nothing, alert raised elsewhere.
+	} else {
+		const l = ledger.unwrap();
+
+		if (l.total.unwrap() !== lock_amount) {
+			console.log(
+				`‼️  stash.lock != ledger total for [controller: ${controller}, stash: ${stash}]: ledger.stash: ${l.stash}, ledger.total: ${l.total}, lock: ${lock_amount}`
+			);
+		} else {
+			console.log(
+				`✅ stash.lock == ledger total for [controller: ${controller}, stash: ${stash}]: ledger.stash: ${l.stash}, ledger.total: ${l.total}, lock: ${lock_amount}`
+			);
+		}
+	}
+}
+
+async function staking_lock(apiAt: ApiDecoration<'promise'>, acc: string) {
+	const stash = apiAt.registry.createType('AccountId', acc);
+	const lock_amount = (await apiAt.query.balances.locks(stash)).map((l) => {
+		const id = l.id.toHuman()?.toString();
+		if (id == STAKING_ID) {
+			return l.amount;
+		}
+	});
+
+	if (lock_amount[0] == undefined) {
+		return 0;
+	} else {
+		return lock_amount[0];
+	}
 }
 
 /// checks when controller and stash became same.
@@ -155,6 +267,8 @@ async function when_controller_deprecated(api: ApiPromise, bonded_account: strin
 			start
 		)}`
 	);
+
+	return start;
 }
 
 main().catch(console.error);
