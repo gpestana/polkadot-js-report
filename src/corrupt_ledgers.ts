@@ -55,14 +55,14 @@ async function main() {
 
 	if (corrupt) {
 		const when_deprecated = [];
-		const when_none = [];
 
 		const [corrupt_controllers, none_ledgers] = await corrupt_ledgers(apiAt, check_locks);
 		// iterate on set of corrupted ledgers
 
 		const do_deprecated = false;
 		if (do_deprecated) {
-			for (const controller of corrupt_controllers) {
+			for (const pair of corrupt_controllers) {
+				let [controller, _stash] = pair;
 				const when = await when_controller_deprecated(api, controller);
 				when_deprecated.push([controller, when]);
 			}
@@ -70,8 +70,9 @@ async function main() {
 
 		console.log(`\n⚫ None ledgers, i.e. 'Ledger(bonded_controller) = None'`);
 		let n = 0;
-		none_ledgers.forEach((c) => {
-			console.log(` ${c}`);
+		none_ledgers.forEach((pair) => {
+			let [controller, stash] = pair;
+			console.log(` none ledger with pair (controller: ${controller}, stash: ${stash})`);
 			n += 1;
 		});
 		console.log(`# of none ledgers: ${n}`);
@@ -87,7 +88,7 @@ async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>, check_locks: boo
 	const reverse_bonded = new Map(); // controller -> stash
 	const duplicate_controllers = new Set<string>();
 	const corrupted: BondedTriplet[] = [];
-	const none_ledgers: string[] = [];
+	const none_ledgers: [string, string][] = [];
 
 	const bonded_entries = await apiAt.query.staking.bonded.entries();
 
@@ -143,8 +144,12 @@ async function corrupt_ledgers(apiAt: ApiDecoration<'promise'>, check_locks: boo
 		const controller = c?.toString();
 		const stash = s?.toString();
 
-		if (controller !== undefined && !ledgers_controllers.includes(controller)) {
-			none_ledgers.push(controller);
+		if (
+			controller !== undefined &&
+			stash !== undefined &&
+			!ledgers_controllers.includes(controller)
+		) {
+			none_ledgers.push([controller, stash]);
 			if (stash != undefined) {
 				// check stash status.
 				await stash_status(apiAt, controller, stash);
